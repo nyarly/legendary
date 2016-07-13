@@ -1,0 +1,22 @@
+let s:generatedTime = {{ .Now }}
+let s:coverageResults = {
+{{ range $file, $coverage := .Results }}\'{{ $file }}': {
+\  'hits': [
+{{- range .Hits -}}
+{{.}},
+{{- end -}}
+],
+\  'misses': [
+{{- range .Misses -}}
+{{.}},
+{{- end -}}
+],
+\  'ignored': [
+{{- range .Ignored -}}
+{{.}},
+{{- end -}}
+],
+\  },
+{{ end -}}
+\}
+call AddSimplecovResults(expand("<sfile>:p"), s:coverageResults)
