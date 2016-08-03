@@ -9,32 +9,40 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"text/tabwriter"
 	"text/template"
 	"time"
 
 	"github.com/docopt/docopt-go"
+	"github.com/nyarly/coerce"
 	"golang.org/x/tools/cover"
 )
 
-//go:generate inlinefiles --package main . template.go
 //go:generate inlinefiles --vfs=Templates --package main . vfs_template.go
 
 const (
 	docstring = `Parse go coverage profiles into vim-legend files
-Usage: legendary [options] <out_path> <coverage_path>...
-       legendary [options] --hitlist [--limit=n] <coverage_path>...
+Usage: legendary [options] <outpath> <sourcefiles>...
+       legendary [options] --noout <sourcefiles>...
 
 Options:
-	--coverage-root=<dir> Treat the coverage files as refering to files rooted at <dir> (Default: $GOPATH/src)
-	--project-root=<dir>  Emit the vim-legend configuration rooted at <dir> (Default: $PWD)
+	--coverage=<dir>      Treat the coverage files as refering to files rooted at <dir> (Default: $GOPATH/src)
+	--project=<dir>       Emit the vim-legend configuration rooted at <dir> (Default: $PWD)
 	--hitlist             Don't produce vim-legend output - instead repoort on worst covered files
 	--limit=<n>           Limit the number of files in the hitlist to <n>
+	--noout               Don't record the coverage anywhere (use with hitlist)
 `
 )
 
 type (
+	options struct {
+		coverage, project string
+		hitlist           bool
+		limit             uint
+		outpath           string
+		sourcefiles       []string
+	}
+
 	context struct {
 		Now     int64
 		Results map[string]*result
@@ -88,82 +96,50 @@ func (r resultsByLines) Swap(i, j int) {
 }
 
 func main() {
-	parsed, err := docopt.Parse(docstring, nil, true, "", false)
-	if err != nil {
-		log.Fatal(err)
+	log.SetFlags(log.Flags() | log.Lshortfile)
+	opts := parseOpts()
+
+	ctx := collectCoverageContext(opts.coverage, opts.project, opts.sourcefiles)
+
+	if opts.hitlist {
+		printHitlist(ctx, int(opts.limit))
 	}
 
-	sourceFiles := parsed[`<coverage_path>`].([]string)
-	coverageRoot := filepath.Join(os.Getenv("GOPATH"), "src")
-	if gcr, ok := parsed[`--coverage-root`]; ok && gcr != nil {
-		coverageRoot = gcr.(string)
-	}
-
-	var projRoot string
-	if gpr, ok := parsed[`--project-root`]; ok && gpr != nil {
-		projRoot = gpr.(string)
-	} else {
-		projRoot, err = os.Getwd()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	ctx := collectCoverageContext(coverageRoot, projRoot, sourceFiles)
-
-	if parsed[`--hitlist`].(bool) {
-		var rs resultsByLines
-		for _, v := range ctx.Results {
-			rs = append(rs, v)
-		}
-		sort.Sort(sort.Reverse(rs))
-
-		var ps resultsByPercentage
-		for _, v := range ctx.Results {
-			ps = append(ps, v)
-		}
-		sort.Sort(sort.Reverse(ps))
-
-		var rps [][2]*result
-		for i := range rs {
-			rps = append(rps, [2]*result{rs[i], ps[i]})
-		}
-
-		len := len(rps)
-		if lim := parsed["--limit"]; lim != nil {
-			l, err := strconv.ParseInt(lim.(string), 10, 0)
-			if err == nil {
-				len = int(l)
-			}
-		}
-
-		tabs := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-		fmt.Fprintf(tabs, "File\tMissed Lines\tFile\tPercent missed\n")
-		for i := 0; i < len; i++ {
-			fmt.Fprintf(tabs, "%s\t%d\t%s\t%.2f\n",
-				rps[i][0].filename, rps[i][0].MissCount(), rps[i][1].filename, rps[i][1].MissFraction()*100)
-		}
-		tabs.Flush()
-		return
-	}
-	targetPath := parsed[`<out_path>`].(string)
-	tmpl := getTemplate("coverage.tmpl")
-
-	out := &bytes.Buffer{}
-	file, err := os.Create(targetPath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	tmpl.Execute(out, ctx)
-
-	file.Write(out.Bytes())
+	writeOut(ctx, opts)
 }
 
-func missOutput(rs []*result, header string, fn func(*result) string) {
+func printHitlist(ctx context, limit int) {
+	var rs resultsByLines
+	for _, v := range ctx.Results {
+		rs = append(rs, v)
+	}
+	sort.Sort(sort.Reverse(rs))
+
+	var ps resultsByPercentage
+	for _, v := range ctx.Results {
+		ps = append(ps, v)
+	}
+	sort.Sort(sort.Reverse(ps))
+
+	var rps [][2]*result
+	for i := range rs {
+		rps = append(rps, [2]*result{rs[i], ps[i]})
+	}
+
+	if limit == 0 {
+		limit = len(rps)
+	}
+
+	tabs := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
+	fmt.Fprintf(tabs, "File\tMissed Lines\tFile\tPercent missed\n")
+	for i := 0; i < limit; i++ {
+		fmt.Fprintf(tabs, "%s\t%d\t%s\t%.2f\n",
+			rps[i][0].filename, rps[i][0].MissCount(), rps[i][1].filename, rps[i][1].MissFraction()*100)
+	}
+	tabs.Flush()
 }
 
-func injestCoverageFile(ctx *context, coverageRoot, projRoot, fp string) {
+func ingestCoverageFile(ctx *context, coverageRoot, projRoot, fp string) {
 	ps, err := cover.ParseProfiles(fp)
 	if err != nil {
 		log.Print(err)
@@ -300,12 +276,13 @@ func (e *escaper) Read(p []byte) (n int, err error) {
 func newEscaper(r io.Reader) *escaper {
 	return &escaper{r, make([]byte, 0), false}
 }
+
 func collectCoverageContext(coverageRoot string, projRoot string, sourceFiles []string) context {
 	var ctx context
 	ctx.Results = make(map[string]*result)
 
 	for _, fp := range sourceFiles {
-		injestCoverageFile(&ctx, coverageRoot, projRoot, fp)
+		ingestCoverageFile(&ctx, coverageRoot, projRoot, fp)
 	}
 
 	for f, r := range ctx.Results {
@@ -314,4 +291,44 @@ func collectCoverageContext(coverageRoot string, projRoot string, sourceFiles []
 
 	ctx.Now = time.Now().Unix()
 	return ctx
+}
+
+func parseOpts() options {
+	parsed, err := docopt.Parse(docstring, nil, true, "", false)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pwd, pwdErr := os.Getwd()
+	opts := options{
+		coverage: filepath.Join(os.Getenv("GOPATH"), "src"),
+		project:  pwd,
+	}
+	log.Printf("%# v", opts)
+	err = coerce.Struct(&opts, parsed, "-%s", "--%s", "<%s>")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("%# v", opts)
+	if opts.project == "" {
+		log.Fatal(pwdErr)
+	}
+	return opts
+}
+
+func writeOut(ctx context, opts options) {
+	tmpl := getTemplate("coverage.tmpl")
+
+	out := &bytes.Buffer{}
+	file, err := os.Create(opts.outpath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tmpl.Execute(out, ctx)
+
+	_, err = file.Write(out.Bytes())
+	if err != nil {
+		log.Fatal(err)
+	}
 }
