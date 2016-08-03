@@ -1,0 +1,37 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "F+YOz/6ymsuIxUy511OAdxjyhRI=",
+			"path": "github.com/docopt/docopt-go",
+			"revision": "784ddc588536785e7299f7272f39101f7faccc3f",
+			"revisionTime": "2016-02-16T23:20:12Z"
+		},
+		{
+			"checksumSHA1": "SYaNSHmf8Hv9r8oYQByeUV7JQt0=",
+			"path": "github.com/nyarly/coerce",
+			"revision": "f145234e1c3c651cf5f83ebce49e7b492b264068",
+			"revisionTime": "2016-08-03T20:28:58Z"
+		},
+		{
+			"checksumSHA1": "O5eYI3n1WdaC30AxQjETe3dAQHU=",
+			"path": "golang.org/x/tools/cover",
+			"revision": "7ef02fdb2243dc494cd0528d4a29856b4a56ecfc",
+			"revisionTime": "2016-08-02T20:38:13Z"
+		},
+		{
+			"checksumSHA1": "NC6sRRBg4e1wHOkOu2doF24QWh0=",
+			"path": "golang.org/x/tools/godoc/vfs",
+			"revision": "7ef02fdb2243dc494cd0528d4a29856b4a56ecfc",
+			"revisionTime": "2016-08-02T20:38:13Z"
+		},
+		{
+			"checksumSHA1": "Qwc7VecyIh84Ol8n9J9DUwZQtII=",
+			"path": "golang.org/x/tools/godoc/vfs/mapfs",
+			"revision": "7ef02fdb2243dc494cd0528d4a29856b4a56ecfc",
+			"revisionTime": "2016-08-02T20:38:13Z"
+		}
+	],
+	"rootPath": "github.com/nyarly/legendary"
+}
