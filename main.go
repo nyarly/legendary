@@ -304,12 +304,10 @@ func parseOpts() options {
 		coverage: filepath.Join(os.Getenv("GOPATH"), "src"),
 		project:  pwd,
 	}
-	log.Printf("%# v", opts)
 	err = coerce.Struct(&opts, parsed, "-%s", "--%s", "<%s>")
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("%# v", opts)
 	if opts.project == "" {
 		log.Fatal(pwdErr)
 	}
