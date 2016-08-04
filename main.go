@@ -139,65 +139,6 @@ func printHitlist(ctx context, limit int) {
 	tabs.Flush()
 }
 
-func ingestCoverageFile(ctx *context, coverageRoot, projRoot, fp string) {
-	ps, err := cover.ParseProfiles(fp)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-
-	for _, p := range ps {
-		an := filepath.Join(coverageRoot, p.FileName)
-		rn, err := filepath.Rel(projRoot, an)
-		if err != nil {
-			log.Print(err)
-			return
-		}
-
-		r, ok := ctx.Results[rn]
-		if !ok {
-			r = &result{filename: rn, counts: make(map[int]int)}
-			ctx.Results[rn] = r
-		}
-		for _, pb := range p.Blocks {
-			for ln := pb.StartLine; ln <= pb.EndLine; ln++ {
-				r.counts[ln] += pb.Count
-			}
-		}
-	}
-	return
-}
-
-func buildFileCoverage(ctx *context, projRoot, f string, r *result) {
-	file, err := os.Open(filepath.Join(projRoot, f))
-	if err != nil {
-		log.Print(err)
-		delete(ctx.Results, f)
-		return
-	}
-
-	lines, err := lineCounter(file)
-	if err != nil {
-		log.Print(err)
-		delete(ctx.Results, f)
-		return
-	}
-	r.lines = lines
-
-	for ln := 0; ln < r.lines; ln++ {
-		c, ok := r.counts[ln]
-		switch {
-		default:
-			r.Misses = append(r.Misses, ln)
-		case !ok:
-			r.Ignored = append(r.Ignored, ln)
-		case c > 0:
-			r.Hits = append(r.Hits, ln)
-		}
-	}
-	return
-}
-
 func getTemplate(n string) *template.Template {
 	tmplFile, err := Templates.Open(n)
 	if err != nil {
@@ -291,6 +232,65 @@ func collectCoverageContext(coverageRoot string, projRoot string, sourceFiles []
 
 	ctx.Now = time.Now().Unix()
 	return ctx
+}
+
+func ingestCoverageFile(ctx *context, coverageRoot, projRoot, fp string) {
+	ps, err := cover.ParseProfiles(fp)
+	if err != nil {
+		log.Print(err)
+		return
+	}
+
+	for _, p := range ps {
+		an := filepath.Join(coverageRoot, p.FileName)
+		rn, err := filepath.Rel(projRoot, an)
+		if err != nil {
+			log.Print(err)
+			return
+		}
+
+		r, ok := ctx.Results[rn]
+		if !ok {
+			r = &result{filename: rn, counts: make(map[int]int)}
+			ctx.Results[rn] = r
+		}
+		for _, pb := range p.Blocks {
+			for ln := pb.StartLine; ln <= pb.EndLine; ln++ {
+				r.counts[ln] += pb.Count
+			}
+		}
+	}
+	return
+}
+
+func buildFileCoverage(ctx *context, projRoot, f string, r *result) {
+	file, err := os.Open(filepath.Join(projRoot, f))
+	if err != nil {
+		log.Print(err)
+		delete(ctx.Results, f)
+		return
+	}
+
+	lines, err := lineCounter(file)
+	if err != nil {
+		log.Print(err)
+		delete(ctx.Results, f)
+		return
+	}
+	r.lines = lines
+
+	for ln := 0; ln < r.lines; ln++ {
+		c, ok := r.counts[ln]
+		switch {
+		default:
+			r.Misses = append(r.Misses, ln)
+		case !ok:
+			r.Ignored = append(r.Ignored, ln)
+		case c > 0:
+			r.Hits = append(r.Hits, ln)
+		}
+	}
+	return
 }
 
 func parseOpts() options {
