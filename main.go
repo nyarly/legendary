@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"text/tabwriter"
 	"text/template"
 	"time"
@@ -26,9 +27,9 @@ Usage: legendary [options] <outpath> <sourcefiles>...
        legendary [options] --noout <sourcefiles>...
 
 Options:
-	--coverage=<dir>      Treat the coverage files as refering to files rooted at <dir> (Default: $GOPATH/src)
+	--coverage=<dir>      Treat the coverage files as refering to files rooted at <dir> (Default: First element of $GOPATH + /src)
 	--project=<dir>       Emit the vim-legend configuration rooted at <dir> (Default: $PWD)
-	--hitlist             Don't produce vim-legend output - instead repoort on worst covered files
+	--hitlist             report on worst covered files
 	--limit=<n>           Limit the number of files in the hitlist to <n>
 	--noout               Don't record the coverage anywhere (use with hitlist)
 `
@@ -127,6 +128,10 @@ func printHitlist(ctx context, limit int) {
 	}
 
 	if limit == 0 {
+		limit = len(rps)
+	}
+
+	if limit > len(rps) {
 		limit = len(rps)
 	}
 
@@ -300,8 +305,9 @@ func parseOpts() options {
 	}
 
 	pwd, pwdErr := os.Getwd()
+	gopath := strings.Split(os.Getenv("GOPATH"), ":")[0]
 	opts := options{
-		coverage: filepath.Join(os.Getenv("GOPATH"), "src"),
+		coverage: filepath.Join(gopath, "src"),
 		project:  pwd,
 	}
 	err = coerce.Struct(&opts, parsed, "-%s", "--%s", "<%s>")
